@@ -1,0 +1,9 @@
+{
+	"name": "speedphp/framework",
+	"homepage": "http://www.speedphp.com/",
+	"type": "library",
+	"license": "BSD-2-Clause",
+	"require": {
+		"php": ">=5.2"
+	}
+}
