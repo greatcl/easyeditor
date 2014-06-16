@@ -4,9 +4,10 @@ $(function(){
     editorPage.init();
 
 	var aceEditor = new ACEEditor("editor");
-	aceEditor.init();
-	
-    var tabPanel = new TabPanel("top-panel", aceEditor);
+    var tabPanel = new TabPanel("top-panel");
+    
+    tabPanel.init(aceEditor);
+    aceEditor.init(tabPanel);
 
     var fileTree = new FileTree('filetree');
     fileTree.init(aceEditor, tabPanel);

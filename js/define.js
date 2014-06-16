@@ -3,45 +3,89 @@ var EditorTab = (function(){
 		this.parentPanel = tabPanel;
 		this.tabId = 'tab_' + tabId;
 		this.fileInfo = fileInfo;
+		this.editorSession = null;
 	};
 
 	EditorTab.prototype.init = function(){
 		var self = this;
-		var tab = $('<div class="editor-tab editor-tab-current" id="' + this.tabId + '"><div>' + this.fileInfo['fileName'] + '</div></div>');
+		var tab = $('<div class="editor-tab editor-tab-normal editor-tab-current" id="' + this.tabId + '"><div class="tabFileName" title="' + this.fileInfo['fileName'] + '">' + this.fileInfo['fileName'] + '</div></div>');
+		var closeBtn = $('<div class="tabCloseBtn tabCloseBtnDefault" title="close file">x</div>');
+		closeBtn.on('click',function(){
+			self.closeTab();
+		});
+		tab.append(closeBtn);
 		tab.on('click', function(){
 			self.parentPanel.switchTab(self.tabId);
 		});
 		tab.on('dblclick', function(){
-			self.closeTab(self.tabId);
+			self.forceCloseTab();
 		});
 		return tab;
 	};
 
-	EditorTab.prototype.closeTab = function(tabId){
-		$('#' + tabId).remove();
-		var newTabId = this.parentPanel.removeFromTabList(tabId);
+	EditorTab.prototype.setDefaultCloseBtn = function(){
+		var closeBtn = $('#'+this.tabId).find('.tabCloseBtn');
+		if (closeBtn.hasClass('tabCloseBtnWarn')){
+			closeBtn.removeClass('tabCloseBtnWarn').addClass('tabCloseBtnDefault');
+		}
+	};
+
+	EditorTab.prototype.setWarnCloseBtn = function(){
+		var closeBtn = $('#'+this.tabId).find('.tabCloseBtn');
+		if (closeBtn.hasClass('tabCloseBtnDefault')){
+			closeBtn.removeClass('tabCloseBtnDefault').addClass('tabCloseBtnWarn');
+		}
+	};
+
+	EditorTab.prototype.closeTab = function(){
+		if (this.parentPanel.aceEditor.isTextChanged(this.tabId)){
+			alert('文件未保存');
+		} else {
+			$('#' + this.tabId).remove();
+			var newTabId = this.parentPanel.removeFromTabList(this.tabId);
+			if (!newTabId){ // there is no opened file
+				this.parentPanel.aceEditor.clearEditorFile();
+			} else {
+				this.parentPanel.switchTab(newTabId);
+			}
+		}
+	};
+
+	EditorTab.prototype.forceCloseTab = function(){
+		$('#' + this.tabId).remove();
+		var newTabId = this.parentPanel.removeFromTabList(this.tabId);
 		if (!newTabId){ // there is no opened file
 			this.parentPanel.aceEditor.clearEditorFile();
 		} else {
 			this.parentPanel.switchTab(newTabId);
 		}
-		// @todo remove file content cache, then switch tab
 	};
 
-	EditorTab.prototype.bindEvent = function(){
+	EditorTab.prototype.bindEditorSession = function(editorSession){
+		this.editorSession = editorSession;
+	};
 
+	EditorTab.prototype.isBindEditorSession = function(){
+		if (!this.editorSession){
+			return false;
+		} else {
+			return this.editorSession;
+		}
 	};
 
 	return EditorTab;
 })();
 
 var TabPanel = (function(){
-	var TabPanel = function(divId, aceEditor){
+	var TabPanel = function(divId){
 		this.divId = divId;
 		this.tabPanel = $('#' + divId);
 		// if cookie is set, get from cookie, or init to 0
 		this.tabId = 0;
 		this.fileList = [];
+	};
+
+	TabPanel.prototype.init = function(aceEditor){
 		this.aceEditor = aceEditor;
 	};
 
@@ -49,10 +93,42 @@ var TabPanel = (function(){
 		var thisTabId = 'tab_' + this.tabId;
 		$('.editor-tab-current').removeClass('editor-tab-current').addClass('editor-tab-normal');
 		var editorTab = new EditorTab(this.tabId, fileInfo, this);
+
+		var tabFile = {'filePath': fileInfo['filePath'], 'tabId' : thisTabId, 'editorTab': editorTab};
 		this.tabPanel.append(editorTab.init());
-		this.fileList.push({'filePath': fileInfo['filePath'], 'tabId' : 'tab_' + this.tabId});
+		this.fileList.push(tabFile);
 		this.tabId += 1;
 		return thisTabId;
+	};
+
+	TabPanel.prototype.bindTabEditorSession = function(tabId, editorSession){
+		for(var i in this.fileList){
+			if (this.fileList[i]['tabId'] == tabId){
+				this.fileList[i]['editorTab'].bindEditorSession(editorSession);
+				break;
+			}
+		}
+	};
+
+	TabPanel.prototype.isBindEditorSession = function(tabId){
+		for(var i in this.fileList){
+			if (this.fileList[i]['tabId'] == tabId){
+				return this.fileList[i]['editorTab'].isBindEditorSession();
+			}
+		}
+	};
+
+	TabPanel.prototype.setTabCloseBtn = function(tabId, btnClass){
+		for(var i in this.fileList){
+			if (this.fileList[i]['tabId'] == tabId){
+				if (btnClass == 'default'){
+					return this.fileList[i]['editorTab'].setDefaultCloseBtn();
+				} else if (btnClass == 'warn'){
+					return this.fileList[i]['editorTab'].setWarnCloseBtn();
+				}
+				
+			}
+		}
 	};
 
 	TabPanel.prototype.isTabExist = function(filePath){
@@ -135,30 +211,82 @@ var ACEEditor = (function(){
 	var ACEEditor = function(editorId){
 		this.editorId = editorId;
 		this.editor = ace.edit(editorId);
+		ace.require('ace/ext/settings_menu').init(editor);
+		this.modeList = ace.require('ace/ext/modelist');
 	};
 
-	ACEEditor.prototype.init = function(){
+	ACEEditor.prototype.init = function(tabPanel){
+		this.tabPanel = tabPanel;
 		var self = this;
 		this.editor.setReadOnly(true);
-	    this.editor.commands.addCommand({
+	    this.editor.commands.addCommands([{
 	    	name : 'Save',
 	    	bindKey: {win: 'Ctrl-S', mac: 'Command-S'},
 	    	exec: function(editor){
 	    		self.saveFile();
 	    	},
 	    	readOnly: false
-	    });
-	    this.setFontSize('14px');
+	    },
+	    {
+			name: "showSettingsMenu",
+			bindKey: {win: "Ctrl-q", mac: "Command-q"},
+			exec: function(editor) {
+				editor.showSettingsMenu();
+			},
+			readOnly: true
+		},
+		{
+		    name: "setVimMode",
+		    bindKey: {win: 'Ctrl-Alt-v', mac: "Command-Alt-v"},
+		    exec: function(editor){
+		        var handler = editor.getKeyboardHandler();
+		        if (handler.platform == 'vim'){
+		            handler = '';
+		        } else if (handler.platform == 'win'){
+		            handler = 'ace/keyboard/vim';
+		        } else {
+		            handler = '';
+		        }
+		        editor.setKeyboardHandler(handler);
+		    },
+		    readOnly: true
+		}]);
+	    this.setFontSize('16px');
 		this.setTheme();
+
+		this.editor.on('change',function(){
+			self.setTabCloseBtn();
+		});
+	};
+
+	ACEEditor.prototype.setTabCloseBtn = function(){
+		if (this.isTextChanged()){
+			this.tabPanel.setTabCloseBtn(this.currentTabId, 'warn');
+		} else {
+			this.tabPanel.setTabCloseBtn(this.currentTabId, 'default');
+		}
+	};
+
+	ACEEditor.prototype.isTextChanged = function(tabId){
+		tabId = tabId ? tabId : this.currentTabId;
+		var editorSession = this.tabPanel.isBindEditorSession(tabId);
+		var cacheFileContent = $('[tabId="' + tabId + '"]').val();
+		var editorFileContent = editorSession.getValue();
+		return !(cacheFileContent == editorFileContent);
 	};
 
 	ACEEditor.prototype.saveFile = function(){
+		var self = this;
 		this.updateCacheFile(this.tabId, this.editor.getValue());
 		$.post('./index.php?c=main&a=saveFile',{
 			'filePath' : this.filePath,
 			'fileContent' : this.editor.getValue()
 		}, function(result){
-			alert(result);
+			result = eval( "(" + result + ")");
+			alert(result.errmsg);
+			if (result.errno == 0){
+				self.setTabCloseBtn();
+			}
 		});
 	};
 
@@ -182,24 +310,12 @@ var ACEEditor = (function(){
 		document.getElementById(this.editorId).style.fontSize=fontSize;
 	};
 
-	ACEEditor.prototype.getAceMode = function(extension){
-		var ace_mode={c:"c_cpp",cpp:"c_cpp",css:"css",html:"html",htm:"html",ini:"ini",java:"java",js:"javascript",json:"json",jsp:"jsp",md:"markdown",php:"php",py:"python",sh:"sh",sql:"sql",txt:"text",xml:"xml"}
-		if (extension == ''){
-			return 'plain_text';
-		} else if (!extension){
-			return false;
-		} else if (ace_mode[extension]){
-			return ace_mode[extension];
-		} else {
-			return 'text';
-		}
-	};
-
-	ACEEditor.prototype.openFile = function(filePath, tabPanel){
+	ACEEditor.prototype.openFile = function(filePath){
 		var self = this;
-		var tabId = tabPanel.isTabExist(filePath);
+		var tabId = this.tabPanel.isTabExist(filePath);
 		if (!tabId){
-			tabId = tabPanel.addTab({'fileName' : filePath.split('/').pop(), 'filePath' : filePath});
+			var fileInfo = {'fileName' : filePath.split('/').pop(), 'filePath' : filePath};
+			tabId = this.tabPanel.addTab(fileInfo);
 			$.getJSON('./index.php?c=main&a=getFile',{
 				'filepath' : filePath
 			}, function(result){
@@ -209,7 +325,7 @@ var ACEEditor = (function(){
 				self.loadFileContent(tabId);
 			});
 		} else {
-			tabPanel.switchTab(tabId);
+			this.tabPanel.switchTab(tabId);
 		}
 
 		this.filePath = filePath;
@@ -217,13 +333,19 @@ var ACEEditor = (function(){
 	};
 
 	ACEEditor.prototype.loadFileContent = function(tabId){
+		// current active tab Id
+		this.currentTabId = tabId;
+
 		var fileContent = $('[tabId="' + tabId + '"]').val();
 		var filePath = $('[tabId="' + tabId + '"]').attr('filePath');
-		
+		var aceMode = this.modeList.getModeForPath(filePath).mode;
+		var editorSession = this.tabPanel.isBindEditorSession(tabId);
+		if (!editorSession){
+			editorSession = ace.createEditSession(fileContent, aceMode);
+			this.tabPanel.bindTabEditorSession(tabId, editorSession);
+		}
+		this.editor.setSession(editorSession);
 		this.editor.setReadOnly(false);
-		this.editor.getSession().setMode("ace/mode/" + this.getAceMode(filePath.split('.').pop()));
-		this.editor.setValue(fileContent);
-		this.editor.clearSelection();
 		this.editor.focus();
 	};
 
@@ -237,8 +359,7 @@ var ACEEditor = (function(){
 
 	ACEEditor.prototype.clearEditorFile = function(){
 		this.editor.setReadOnly(true);
-		this.editor.setValue('');
-		this.editor.getSession().setMode("ace/mode/text");
+		this.editor.setSession(ace.createEditSession('', 'ace/mode/text'));
 		this.editor.focus();
 	};
 
@@ -256,6 +377,10 @@ var FileTree = (function(){
 		this.aceEditor = aceEditor;
 		this.tabPanel = tabPanel;
 		this.getDirList(this.currentPath);
+		var self = this;
+		$('.pathBtn').on('click', function(){
+			self.getDirList($(this).attr('path'));
+		});
 	};
 
 	FileTree.prototype.buildTree = function(fileList){
@@ -285,6 +410,23 @@ var FileTree = (function(){
 
 		$('#currentPath').html(this.currentPath);
 		$('#currentPath').attr('title', this.currentPath);
+
+		var pathArray = this.currentPath.split('/');
+		var lastPath = pathArray.pop();
+		if (lastPath === ''){
+			$('#lastPath').hide();
+		} else {
+			$('#lastPath').show();
+			$('#lastPath').attr('path', this.currentPath);
+			$('#lastPath').attr('title', this.currentPath);
+			$('#lastPath').html(lastPath);
+		}
+		
+		var lastLevelPath = pathArray.join('/');
+		var lboPath = pathArray.pop();
+		$('#lboPath').attr('path', lastLevelPath === '' ? '/' : lastLevelPath);
+		$('#lboPath').attr('title', lastLevelPath === '' ? '/' : lastLevelPath);
+		$('#lboPath').html(lboPath === '' ? '/' : lboPath);
 		this.fileTree.html(treeshow);
 	};
 
@@ -316,7 +458,7 @@ var FileTree = (function(){
 				if(filetype == 'dir'){
 					self.getDirList(thispath);
 				} else if(filetype == 'file'){
-					self.aceEditor.openFile(thispath, self.tabPanel);
+					self.aceEditor.openFile(thispath);
 				}
 			});
 		});

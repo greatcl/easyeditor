@@ -2,7 +2,7 @@
 define("BASEPATH",'.');
 define("APP_PATH",dirname(__FILE__));
 define("SP_PATH",dirname(__FILE__).'/SpeedPHP');
-define("ROOT_PATH", APP_PATH);
+define("ROOT_PATH", dirname(APP_PATH));
 define("SKIP_PATH", APP_PATH);
 define("JS_PATH", BASEPATH . "/js");
 define("CSS_PATH", BASEPATH . "/themes/default/css");

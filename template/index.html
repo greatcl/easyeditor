@@ -11,7 +11,9 @@
 		<div class="left">
 			<div class="filelist" id="filelist">
 				<div class="treeinfo">
-					路径：<span id="currentPath">/</span>
+					<span id="currentPath" style="display:none">/</span>
+					<span id="lboPath" class="pathBtn" path=""></span>
+					<span id="lastPath" class="pathBtn" path="" style="display:none"></span>
 				</div>
 				<div class="treecontainer" id="treecontainer" onselectstart="return false;">
 					<ul class="tree" id="filetree">
@@ -28,6 +30,9 @@
 	</div>
 	<script type="text/javascript" src="<{$smarty.const.JS_PATH}>/jquery-1.11.0.min.js"></script>
 	<script type="text/javascript" src="<{$smarty.const.ACE_PATH}>/ace.js"></script>
+	<script type="text/javascript" src="<{$smarty.const.ACE_PATH}>/ext-modelist.js"></script>
+	<script type="text/javascript" src="<{$smarty.const.ACE_PATH}>/ext-settings_menu.js"></script>
+	
 	<script type="text/javascript" src="<{$smarty.const.JS_PATH}>/define.js"></script>
 	<script type="text/javascript" src="<{$smarty.const.JS_PATH}>/main.js"></script>
 </body>

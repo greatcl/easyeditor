@@ -65,11 +65,11 @@ class main extends spController
 		$realFilePath = rtrim(rtrim(ROOT_PATH,'/') . $filePath, '/');
 		$fp = fopen($realFilePath, 'w');
 		if (!$fp){
-			echo "Failed";
+			echo json_encode(array('errno' => 10032,'errmsg' => "Failed"));
 		} else {
 			fwrite($fp, $fileContent);
 			fclose($fp);
-			echo "Save File OK!";
+			echo json_encode(array('errno' => 0, 'errmsg' => "Save File OK!"));
 		}
 	}
 
@@ -109,22 +109,75 @@ class main extends spController
 	 */
 	private function _listDir($dir, $basepath){
 		$dir = rtrim($dir, '/');
-		$fileNameList = scandir($dir);
 		$fileList = array();
-		foreach($fileNameList as $fileName){
-			// 不显示'.',以及以'.'开头的文件('..'除外)
-			if ($fileName[0] != '.' || $fileName == '..'){
-				$isDir = is_dir("$dir/$fileName") ? true : false;
-				$isReadable = is_readable("$dir/$fileName") ? true : false;
-				$isWritable = is_writable("$dir/$fileName") ? true : false;
-				$file = array(
-					'isdir' => $isDir, 
-					'readable' => $isReadable, 
-					'writable' => $isWritable, 
-					'filename' => $fileName,
-					'path' => rtrim($basepath, '/') . '/' . $fileName
-					);
-				array_push($fileList, $file);
+		if (function_exists('scandir')){
+			$fileNameList = scandir($dir);
+			foreach($fileNameList as $fileName){
+				// 不显示'.',以及以'.'开头的文件('..'除外)
+				if ($fileName[0] != '.'){
+					if (!$this->_isSkipFile("$dir/$fileName")){
+						$isDir = is_dir("$dir/$fileName") ? true : false;
+						$isReadable = is_readable("$dir/$fileName") ? true : false;
+						$isWritable = is_writable("$dir/$fileName") ? true : false;
+						$file = array(
+							'isdir' => $isDir, 
+							'readable' => $isReadable, 
+							'writable' => $isWritable, 
+							'filename' => $fileName,
+							'path' => rtrim($basepath, '/') . '/' . $fileName
+							);
+						array_push($fileList, $file);
+					}
+				}
+			}
+		} else {
+			$dirHandle = opendir($dir);
+			while(($fileName = readdir($dirHandle)) !== false){
+				// 不显示'.',以及以'.'开头的文件('..'除外)
+				if ($fileName[0] != '.'){
+					if (!$this->_isSkipFile("$dir/$fileName")){
+						$isDir = is_dir("$dir/$fileName") ? true : false;
+						$isReadable = is_readable("$dir/$fileName") ? true : false;
+						$isWritable = is_writable("$dir/$fileName") ? true : false;
+						$file = array(
+							'isdir' => $isDir, 
+							'readable' => $isReadable, 
+							'writable' => $isWritable, 
+							'filename' => $fileName,
+							'path' => rtrim($basepath, '/') . '/' . $fileName
+							);
+						array_push($fileList, $file);
+					}
+				}
+			}
+			closedir($dirHandle);
+		}
+		$fileList = $this->_fileListSort($fileList);
+			
+		return $fileList;
+	}
+
+	private function _isSkipFile($filePath){
+		if (substr_compare(str_replace('\\', '/', $filePath), str_replace('\\', '/', SKIP_PATH), 0, strlen(SKIP_PATH), true) == 0){
+			return true;
+		}
+		return false;
+	}
+
+	function _fileListSort($fileList){
+		for ($i = 0, $fileCount = count($fileList); $i < $fileCount - 1; ++$i){
+			for ($j = $i + 1; $j < $fileCount; ++$j){
+				if ($fileList[$i]['isdir'] == $fileList[$j]['isdir']){
+					if (strcasecmp($fileList[$i]['filename'], $fileList[$j]['filename']) > 0){
+						$tmp = $fileList[$i];
+						$fileList[$i] = $fileList[$j];
+						$fileList[$j] = $tmp;
+					}
+				} else if (!$fileList[$i]['isdir']){
+					$tmp = $fileList[$i];
+					$fileList[$i] = $fileList[$j];
+					$fileList[$j] = $tmp;
+				}
 			}
 		}
 		return $fileList;
